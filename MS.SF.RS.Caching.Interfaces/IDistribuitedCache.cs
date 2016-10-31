@@ -9,16 +9,16 @@ namespace MS.SF.RS.Caching.Interfaces
 {
     public interface IDistribuitedCache : IService
     {
-        object GetAsync(string region, string key);
+        Task<object> TryGetAsync(string region, string key);
 
-        void SetOrUpdateAsync(string region, string key, string obj, Entities.CacheItemPolicy policy);
+        Task SetOrUpdateAsync(string region, string key, object obj, Entities.CacheItemPolicy policy);
 
-        void UpdatePolicyAsync(string region, string key, Entities.CacheItemPolicy policy);
+        Task<Entities.ExecutionResult> TryUpdatePolicyAsync(string region, string key, Entities.CacheItemPolicy policy);
 
-        void DeleteAsync(string region, string key);
+        Task<Entities.ExecutionResult> TryDeleteAsync(string region, string key);
 
-        void CleanAsync(string region);
+        Task CleanAsync(string region);
 
-        void CleanAllAsync();
+        Task CleanAllAsync();
     }
 }

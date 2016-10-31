@@ -74,6 +74,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Entities\CacheItemPolicy.cs" />
+    <Compile Include="Entities\ExecutionResult.cs" />
     <Compile Include="IDistribuitedCache.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
