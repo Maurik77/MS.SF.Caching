@@ -2,6 +2,7 @@
 using Microsoft.ServiceFabric.Services.Remoting.Client;
 using Microsoft.Services.ServiceFabric.ReliableServices.Caching.Interfaces;
 using Microsoft.Services.ServiceFabric.ReliableServices.Interfaces.Entities;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Fabric;
@@ -29,7 +30,7 @@ namespace Microsoft.Services.ServiceFabric.Caching
         /// <summary>
         /// The service URI
         /// </summary>
-        private Uri serviceUri = new Uri("fabric:/MS.SF.Caching");
+        private Uri serviceUri = new Uri("fabric:/MS.SF.Caching/Caching");
         /// <summary>
         /// The partition list
         /// </summary>
@@ -79,7 +80,13 @@ namespace Microsoft.Services.ServiceFabric.Caching
         {
             var proxy = GetProxy(region, key);
             var result = await proxy.TryGetAsync(region, key);
-            return (T)result;
+
+            if (result != null)
+            {
+                return Deserialize<T>(result);
+            }
+
+            return default(T);
         }
 
         /// <summary>
@@ -100,9 +107,12 @@ namespace Microsoft.Services.ServiceFabric.Caching
             {
                 var cacheItemInfo = add();
                 await this.SetOrUpdateAsync(key, cacheItemInfo.Item, cacheItemInfo.Policy, region);
+                return cacheItemInfo.Item;
             }
-
-            return (T)result;
+            else
+            {
+                return Deserialize<T>(result);
+            }
         }
 
         /// <summary>
@@ -117,7 +127,7 @@ namespace Microsoft.Services.ServiceFabric.Caching
         public Task SetOrUpdateAsync<T>(string key, T obj, CacheItemPolicy policy, string region = null)
         {
             var proxy = GetProxy(region, key);
-            return proxy.SetOrUpdateAsync(region, key, obj, policy);
+            return proxy.SetOrUpdateAsync(region, key, Serialize(obj), policy);
         }
 
         /// <summary>
@@ -197,6 +207,22 @@ namespace Microsoft.Services.ServiceFabric.Caching
         {
             var fullKey = string.Concat(region, string.IsNullOrWhiteSpace(region) ? null : "_", key);
             return new ServicePartitionKey(fullKey.GetHashCode());
+        }
+
+        private static string Serialize<T>(T obj)
+        {
+            return JsonConvert.SerializeObject(obj, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+            });
+        }
+
+        private static T Deserialize<T>(string serializedObj)
+        {
+            return JsonConvert.DeserializeObject<T>(serializedObj, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+            });
         }
     }
 }

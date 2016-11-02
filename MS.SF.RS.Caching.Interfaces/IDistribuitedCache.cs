@@ -10,9 +10,9 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching.Interfaces
 {
     public interface IDistribuitedCache : IService
     {
-        Task<object> TryGetAsync(string region, string key);
+        Task<string> TryGetAsync(string region, string key);
 
-        Task SetOrUpdateAsync(string region, string key, object obj, CacheItemPolicy policy);
+        Task SetOrUpdateAsync(string region, string key, string serializedObj, CacheItemPolicy policy);
 
         Task<ExecutionResult> TryUpdatePolicyAsync(string region, string key, CacheItemPolicy policy);
 
