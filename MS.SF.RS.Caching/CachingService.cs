@@ -12,6 +12,7 @@ using Microsoft.ServiceFabric.Services.Remoting.Runtime;
 using Microsoft.Services.ServiceFabric.ReliableServices.Interfaces.Entities;
 using System.Collections.Concurrent;
 using Microsoft.ServiceFabric.Data;
+using System.Diagnostics;
 
 namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
 {
@@ -25,7 +26,7 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
         private const string POLICIES_PREFIX = "Policies_";
 
         private IReliableDictionary<string, DateTime> regionList;
-        private ConcurrentDictionary<string, CancellationTokenSource> garbageCancellationToken = new ConcurrentDictionary<string, CancellationTokenSource>();
+        private ConcurrentDictionary<string, CancellationTokenSource> garbageCancellationTokenDictionary = new ConcurrentDictionary<string, CancellationTokenSource>();
         private CancellationToken rootCancellationToken;
 
         public CachingService(StatefulServiceContext context)
@@ -63,8 +64,8 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
                 await this.regionList.ForEach(trx,
                     (item) =>
                     {
-                        this.garbageCancellationToken.GetOrAdd(item.Key, new CancellationTokenSource());
-                        this.GarbageExpiredItemsAsync(item.Key);
+                        this.garbageCancellationTokenDictionary.GetOrAdd(item.Key, new CancellationTokenSource());
+                        Task.Run(async () => await this.GarbageExpiredItemsAsync(item.Key));
                     });
             }
 
@@ -78,57 +79,83 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
 
         private async Task GarbageExpiredItemsAsync(string region)
         {
+            Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})");
+
             while (true)
             {
+
                 if (this.rootCancellationToken.IsCancellationRequested)
                 {
+                    Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> rootCancellationToken.IsCancellationRequested");
                     return;
                 }
 
                 CancellationTokenSource cancellationTokenSource;
-                if (!this.garbageCancellationToken.TryGetValue(region, out cancellationTokenSource))
+                Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> retrieve CancellationTokenSource");
+                if (!this.garbageCancellationTokenDictionary.TryGetValue(region, out cancellationTokenSource))
                 {
+                    Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> CancellationTokenSource not found");
                     return;
                 }
 
-                var nextItemToRemove = await GetNextItemToRemove(region, cancellationTokenSource);
-
                 if (cancellationTokenSource.IsCancellationRequested)
                 {
+                    Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> CancellationTokenSource IsCancellationRequested");
                     continue;
                 }
 
-                //List is empty
-                if (nextItemToRemove.Key == null)
+                Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> Invokig GetNextItemToRemove");
+                var nextItemToRemove = await GetNextItemToRemove(region);
+
+                Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> GetNextItemToRemove: Key={nextItemToRemove.Key}, Value={nextItemToRemove.Value?.AbsoluteExpiration}");
+
+                TimeSpan delayFor = Timeout.InfiniteTimeSpan;
+
+                if (nextItemToRemove.Key != null)
                 {
-                    await Task.Delay(TimeSpan.FromMinutes(1), cancellationTokenSource.Token);
-                    continue;
+                    delayFor = nextItemToRemove.Value.AbsoluteExpiration - DateTime.Now;
                 }
 
-                var delayFor = nextItemToRemove.Value.AbsoluteExpiration - DateTime.Now;
-
-                await Task.Delay(delayFor, cancellationTokenSource.Token);
-
-                if (cancellationTokenSource.IsCancellationRequested)
+                if (delayFor == Timeout.InfiniteTimeSpan || delayFor.TotalSeconds > 0)
                 {
-                    continue;
+                    try
+                    {
+                        Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> DelayFor: {delayFor}");
+                        await Task.Delay(delayFor, cancellationTokenSource.Token);
+                    }
+                    catch (Exception)
+                    {
+                        Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> Delay complete before timeout");
+                        if (cancellationTokenSource.IsCancellationRequested)
+                        {
+                            continue;
+                        }
+                    }
                 }
 
                 if (this.rootCancellationToken.IsCancellationRequested)
                 {
+                    Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> 2 rootCancellationToken.IsCancellationRequested");
                     return;
                 }
 
-                await TryDeleteInternalAsync(region, nextItemToRemove.Key, true);
+                if (nextItemToRemove.Key != null)
+                {
+                    Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> TryDeleteInternalAsync({nextItemToRemove.Key})");
+                    await TryDeleteInternalAsync(region, nextItemToRemove.Key, true);
+                }
             }
         }
 
-        private async Task<KeyValuePair<string, CacheItemPolicy>> GetNextItemToRemove(string region, CancellationTokenSource cancellationTokenSource)
+        private async Task<KeyValuePair<string, CacheItemPolicy>> GetNextItemToRemove(string region)
         {
+            Debug.WriteLine($"CachingService::GetNextItemToRemove({region})");
+
             KeyValuePair<string, CacheItemPolicy> nextItemToRemove = new KeyValuePair<string, CacheItemPolicy>();
             var policiesDictionary = await GetReliableDictionaryAsync<CacheItemPolicy>(POLICIES_PREFIX, region);
 
             DateTime minDate = DateTime.MaxValue;
+
             using (var trx = this.StateManager.CreateTransaction())
             {
                 var forEachResult = await policiesDictionary.ForEach(trx, (item) =>
@@ -140,9 +167,13 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
                     }
                 });
 
-                if (forEachResult && nextItemToRemove.Key != null)
+                Debug.WriteLine($"CachingService::GetNextItemToRemove({region})--> forEachResult={forEachResult}");
+                if (forEachResult)
                 {
-                    await this.regionList.TryUpdateAsync(trx, region, nextItemToRemove.Value.AbsoluteExpiration, nextItemToRemove.Value.AbsoluteExpiration);
+                    //Se non ho trovato nulla imposto la data della region a MinValue così al prossimo inserimento viene aggiornata
+                    Debug.WriteLine($"CachingService::GetNextItemToRemove({region})--> regionList.TryUpdateAsync({region}, {minDate})");
+                    await this.regionList.AddOrUpdateAsync(trx, region, minDate, (k, oldValue) => minDate);
+                    await trx.CommitAsync();
                 }
             }
 
@@ -215,29 +246,31 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
 
         private async Task ManageGarbaging(string region, string key, CacheItemPolicy policy)
         {
+            Debug.WriteLine($"CachingService::ManageGarbaging({region}, {key}, {policy.AbsoluteExpiration})");
+
             var dictionaryName = GetDictionaryName(region);
 
             using (var trx = this.StateManager.CreateTransaction())
             {
-                if (!await this.regionList.ContainsKeyAsync(trx, dictionaryName))
-                {
-                    var currentMinDate = await this.regionList.GetOrAddAsync(trx, dictionaryName,
-                        (k) =>
-                        {
-                            this.garbageCancellationToken.GetOrAdd(dictionaryName, new CancellationTokenSource());
-                            this.GarbageExpiredItemsAsync(dictionaryName);
-                            return policy.AbsoluteExpiration;
-                        });
-
-                    if (currentMinDate > policy.AbsoluteExpiration)
+                var currentMinDate = await this.regionList.GetOrAddAsync(trx, dictionaryName,
+                    (k) =>
                     {
-                        CancellationTokenSource garbageCancellationToken;
-                        if (this.garbageCancellationToken.TryGetValue(dictionaryName, out garbageCancellationToken))
-                        {
-                            garbageCancellationToken.Cancel();
-                            garbageCancellationToken.Dispose();
-                            this.garbageCancellationToken.TryUpdate(dictionaryName, new CancellationTokenSource(), garbageCancellationToken);
-                        }
+                        Debug.WriteLine($"CachingService::ManageGarbaging({region}, {key}, {policy.AbsoluteExpiration})--> Region is new");
+                        this.garbageCancellationTokenDictionary.GetOrAdd(dictionaryName, new CancellationTokenSource());
+                        Task.Run(async () => await this.GarbageExpiredItemsAsync(dictionaryName));
+                        return policy.AbsoluteExpiration;
+                    });
+
+                Debug.WriteLine($"CachingService::ManageGarbaging({region}, {key}, {policy.AbsoluteExpiration})-->currentMinDate > policy.AbsoluteExpiration: {currentMinDate} > {policy.AbsoluteExpiration}");
+
+                if (currentMinDate > policy.AbsoluteExpiration)
+                {
+                    CancellationTokenSource garbageCancellationTokenSource;
+                    if (this.garbageCancellationTokenDictionary.TryGetValue(dictionaryName, out garbageCancellationTokenSource))
+                    {
+                        Debug.WriteLine($"{garbageCancellationTokenSource.GetHashCode()} -->garbageCancellationTokenSource.Cancel()");
+                        this.garbageCancellationTokenDictionary.TryUpdate(dictionaryName, new CancellationTokenSource(), garbageCancellationTokenSource);
+                        garbageCancellationTokenSource.Cancel();
                     }
                 }
 
@@ -302,7 +335,7 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
             await this.regionList.TryRemoveAsync(trx, dictionaryName);
 
             CancellationTokenSource garbageCancellationToken;
-            if (this.garbageCancellationToken.TryRemove(dictionaryName, out garbageCancellationToken))
+            if (this.garbageCancellationTokenDictionary.TryRemove(dictionaryName, out garbageCancellationToken))
             {
                 garbageCancellationToken.Cancel();
             }

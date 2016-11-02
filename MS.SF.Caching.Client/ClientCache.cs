@@ -126,8 +126,19 @@ namespace Microsoft.Services.ServiceFabric.Caching
         /// <returns></returns>
         public Task SetOrUpdateAsync<T>(string key, T obj, CacheItemPolicy policy, string region = null)
         {
+            CheckPolicy(policy);
             var proxy = GetProxy(region, key);
             return proxy.SetOrUpdateAsync(region, key, Serialize(obj), policy);
+        }
+
+        private void CheckPolicy(CacheItemPolicy policy)
+        {
+            if (policy.AbsoluteExpiration <= DateTime.Now)
+            {
+                throw new ArgumentOutOfRangeException(nameof(policy.AbsoluteExpiration));
+            }
+
+            //TODO  Add maximum
         }
 
         /// <summary>
@@ -139,6 +150,7 @@ namespace Microsoft.Services.ServiceFabric.Caching
         /// <returns></returns>
         public Task<ExecutionResult> TryUpdatePolicyAsync(string key, CacheItemPolicy policy, string region = null)
         {
+            CheckPolicy(policy);
             var proxy = GetProxy(region, key);
             return proxy.TryUpdatePolicyAsync(region, key, policy);
         }

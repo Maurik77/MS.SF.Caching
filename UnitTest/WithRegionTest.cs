@@ -2,6 +2,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Services.ServiceFabric.Caching;
 using Microsoft.Services.ServiceFabric.ReliableServices.Interfaces.Entities;
+using System.Threading;
 
 namespace UnitTest
 {
@@ -17,13 +18,13 @@ namespace UnitTest
         [TestMethod]
         public void AddSimpleObject()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_SIMPLE, "ValueInCache", new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_SIMPLE, "ValueInCache", new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
         }
 
         [TestMethod]
         public void GetSimpleObject()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_SIMPLE, "ValueInCache", new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_SIMPLE, "ValueInCache", new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
 
             var result = ClientCache.Current.TryGetAsync<string>(OBJECT_KEY_SIMPLE, REGION_NAME).GetAwaiter().GetResult();
 
@@ -33,7 +34,7 @@ namespace UnitTest
         [TestMethod]
         public void RemoveSimpleObject()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_SIMPLE, "ValueInCache", new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_SIMPLE, "ValueInCache", new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
 
             var result = ClientCache.Current.TryDeleteAsync(OBJECT_KEY_SIMPLE, REGION_NAME).GetAwaiter().GetResult();
 
@@ -45,13 +46,13 @@ namespace UnitTest
         [TestMethod]
         public void AddComplexObject()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX, ComplexObject.CreateSimple("ComplexObject"), new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX, ComplexObject.CreateSimple("ComplexObject"), new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
         }
 
         [TestMethod]
         public void GetComplexObject()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX, ComplexObject.CreateSimple("ComplexObject"), new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX, ComplexObject.CreateSimple("ComplexObject"), new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
 
             var result = ClientCache.Current.TryGetAsync<ComplexObject>(OBJECT_KEY_COMPLEX, REGION_NAME).GetAwaiter().GetResult();
 
@@ -61,7 +62,7 @@ namespace UnitTest
         [TestMethod]
         public void RemoveComplexObject()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX, ComplexObject.CreateSimple("ComplexObject"), new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX, ComplexObject.CreateSimple("ComplexObject"), new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
 
             var result = ClientCache.Current.TryDeleteAsync(OBJECT_KEY_COMPLEX, REGION_NAME).GetAwaiter().GetResult();
 
@@ -73,13 +74,13 @@ namespace UnitTest
         [TestMethod]
         public void AddComplexWithListObject()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX_WITHLIST, ComplexObject.CreateWithList("ComplexObjectWithList", 5), new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX_WITHLIST, ComplexObject.CreateWithList("ComplexObjectWithList", 5), new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
         }
 
         [TestMethod]
         public void GetComplexWithListObject()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX_WITHLIST, ComplexObject.CreateWithList("ComplexObjectWithList", 5), new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX_WITHLIST, ComplexObject.CreateWithList("ComplexObjectWithList", 5), new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
 
             var result = ClientCache.Current.TryGetAsync<ComplexObject>(OBJECT_KEY_COMPLEX_WITHLIST, REGION_NAME).GetAwaiter().GetResult();
 
@@ -89,7 +90,7 @@ namespace UnitTest
         [TestMethod]
         public void RemoveComplexWithListObject()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX_WITHLIST, ComplexObject.CreateWithList("ComplexObjectWithList", 5), new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX_WITHLIST, ComplexObject.CreateWithList("ComplexObjectWithList", 5), new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
 
             var result = ClientCache.Current.TryDeleteAsync(OBJECT_KEY_COMPLEX_WITHLIST, REGION_NAME).GetAwaiter().GetResult();
 
@@ -100,9 +101,30 @@ namespace UnitTest
         [TestMethod]
         public void CleanRegion()
         {
-            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_SIMPLE, "ValueInCache", new CacheItemPolicy(), REGION_NAME).GetAwaiter().GetResult();
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_SIMPLE, "ValueInCache", new CacheItemPolicy(TimeSpan.FromMinutes(1)), REGION_NAME).GetAwaiter().GetResult();
 
             ClientCache.Current.CleanAsync(REGION_NAME).GetAwaiter().GetResult();
+        }
+
+        [TestMethod]
+        public void AddComplexObjectWithExpriredTime()
+        {
+            var cacheItemPolicy = new CacheItemPolicy(TimeSpan.FromMinutes(1));
+            ComplexObject result = null;
+
+            ClientCache.Current.SetOrUpdateAsync(OBJECT_KEY_COMPLEX_WITHLIST, ComplexObject.CreateWithList("ComplexObjectWithList", 5), cacheItemPolicy, REGION_NAME).GetAwaiter().GetResult();
+
+            while (cacheItemPolicy.AbsoluteExpiration > DateTime.Now)
+            {
+                result = ClientCache.Current.TryGetAsync<ComplexObject>(OBJECT_KEY_COMPLEX_WITHLIST, REGION_NAME).GetAwaiter().GetResult();
+
+                Assert.AreEqual<string>("ComplexObjectWithList", result.Name);
+
+                Thread.Sleep(5000);
+            }
+
+            result = ClientCache.Current.TryGetAsync<ComplexObject>(OBJECT_KEY_COMPLEX_WITHLIST, REGION_NAME).GetAwaiter().GetResult();
+            Assert.IsNull(result);
         }
     }
 }
