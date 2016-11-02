@@ -1,6 +1,7 @@
 ﻿using Microsoft.ServiceFabric.Services.Client;
 using Microsoft.ServiceFabric.Services.Remoting.Client;
-using MS.SF.RS.Caching.Interfaces;
+using Microsoft.Services.ServiceFabric.ReliableServices.Caching.Interfaces;
+using Microsoft.Services.ServiceFabric.ReliableServices.Interfaces.Entities;
 using System;
 using System.Collections.Generic;
 using System.Fabric;
@@ -9,22 +10,57 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MS.SF.Caching
+namespace Microsoft.Services.ServiceFabric.Caching
 {
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <seealso cref="MS.SF.Caching.IClientCache" />
     public class ClientCache : IClientCache
     {
+        /// <summary>
+        /// The fabric client
+        /// </summary>
         private static FabricClient fabricClient = new FabricClient();
+        /// <summary>
+        /// The number of partitions
+        /// </summary>
         private int numberOfPartitions;
-        private Uri serviceUri;
+        /// <summary>
+        /// The service URI
+        /// </summary>
+        private Uri serviceUri = new Uri("fabric:/MS.SF.Caching");
+        /// <summary>
+        /// The partition list
+        /// </summary>
         private ServicePartitionList partitionList;
+        /// <summary>
+        /// The partition information list
+        /// </summary>
         private List<Int64RangePartitionInformation> partitionInfoList;
+        /// <summary>
+        /// The current
+        /// </summary>
         public static readonly ClientCache Current = new ClientCache();
 
+        /// <summary>
+        /// Prevents a default instance of the <see cref="ClientCache"/> class from being created.
+        /// </summary>
         private ClientCache()
         {
-
+            this.ReadSettings();
         }
 
+        private void ReadSettings()
+        {
+            //TODO Leggere ulteriori configurazione dai settings sezione "MS.SF.Caching"
+        }
+
+        /// <summary>
+        /// Gets the partitions information.
+        /// </summary>
+        /// <param name="serviceUri">The service URI.</param>
+        /// <returns></returns>
         private async Task GetPartitionsInfo(Uri serviceUri)
         {
             this.partitionList = await fabricClient.QueryManager.GetPartitionListAsync(serviceUri);
@@ -32,6 +68,13 @@ namespace MS.SF.Caching
             this.numberOfPartitions = partitionList.Count;
         }
 
+        /// <summary>
+        /// Tries the get asynchronous.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="key">The key.</param>
+        /// <param name="region">The region.</param>
+        /// <returns></returns>
         public async Task<T> TryGetAsync<T>(string key, string region = null)
         {
             var proxy = GetProxy(region, key);
@@ -39,44 +82,84 @@ namespace MS.SF.Caching
             return (T)result;
         }
 
-        public async Task<T> GetOrAddAsync<T>(string key, Func<T> add, Entities.CacheItemPolicy policy, string region = null)
+        /// <summary>
+        /// Gets the or add asynchronous.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="key">The key.</param>
+        /// <param name="add">The add.</param>
+        /// <param name="policy">The policy.</param>
+        /// <param name="region">The region.</param>
+        /// <returns></returns>
+        public async Task<T> GetOrAddAsync<T>(string key, Func<CacheItem<T>> add, string region = null)
         {
             var proxy = GetProxy(region, key);
             var result = await proxy.TryGetAsync(region, key);
 
             if (result == null)
             {
-                result = add();
-                await this.SetOrUpdateAsync(key, result, policy, region);
+                var cacheItemInfo = add();
+                await this.SetOrUpdateAsync(key, cacheItemInfo.Item, cacheItemInfo.Policy, region);
             }
 
             return (T)result;
         }
 
-        public Task SetOrUpdateAsync<T>(string key, T obj, Entities.CacheItemPolicy policy, string region = null)
+        /// <summary>
+        /// Sets the or update asynchronous.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="key">The key.</param>
+        /// <param name="obj">The object.</param>
+        /// <param name="policy">The policy.</param>
+        /// <param name="region">The region.</param>
+        /// <returns></returns>
+        public Task SetOrUpdateAsync<T>(string key, T obj, CacheItemPolicy policy, string region = null)
         {
             var proxy = GetProxy(region, key);
             return proxy.SetOrUpdateAsync(region, key, obj, policy);
         }
 
-        public Task<Entities.ExecutionResult> TryUpdatePolicyAsync(string key, Entities.CacheItemPolicy policy, string region = null)
+        /// <summary>
+        /// Tries the update policy asynchronous.
+        /// </summary>
+        /// <param name="key">The key.</param>
+        /// <param name="policy">The policy.</param>
+        /// <param name="region">The region.</param>
+        /// <returns></returns>
+        public Task<ExecutionResult> TryUpdatePolicyAsync(string key, CacheItemPolicy policy, string region = null)
         {
             var proxy = GetProxy(region, key);
             return proxy.TryUpdatePolicyAsync(region, key, policy);
         }
 
-        public Task<Entities.ExecutionResult> TryDeleteAsync(string key, string region = null)
+        /// <summary>
+        /// Tries the delete asynchronous.
+        /// </summary>
+        /// <param name="key">The key.</param>
+        /// <param name="region">The region.</param>
+        /// <returns></returns>
+        public Task<ExecutionResult> TryDeleteAsync(string key, string region = null)
         {
             var proxy = GetProxy(region, key);
             return proxy.TryDeleteAsync(region, key);
         }
 
+        /// <summary>
+        /// Cleans the asynchronous.
+        /// </summary>
+        /// <param name="region">The region.</param>
+        /// <returns></returns>
         public Task CleanAsync(string region)
         {
             var proxy = GetProxy(region);
             return proxy.CleanAsync(region);
         }
 
+        /// <summary>
+        /// Cleans all asynchronous.
+        /// </summary>
+        /// <returns></returns>
         public Task CleanAllAsync()
         {
             List<Task> alltask = new List<Task>();
@@ -90,6 +173,12 @@ namespace MS.SF.Caching
             return Task.WhenAll(alltask.ToArray());
         }
 
+        /// <summary>
+        /// Gets the proxy.
+        /// </summary>
+        /// <param name="region">The region.</param>
+        /// <param name="key">The key.</param>
+        /// <returns></returns>
         private IDistribuitedCache GetProxy(string region, string key = null)
         {
             var partitionKey = CalculatePartitionKey(region, key, this.numberOfPartitions);
@@ -97,9 +186,17 @@ namespace MS.SF.Caching
             return ServiceProxy.Create<IDistribuitedCache>(this.serviceUri, partitionKey);
         }
 
+        /// <summary>
+        /// Calculates the partition key.
+        /// </summary>
+        /// <param name="region">The region.</param>
+        /// <param name="key">The key.</param>
+        /// <param name="numberOfPartitions">The number of partitions.</param>
+        /// <returns></returns>
         private ServicePartitionKey CalculatePartitionKey(string region, string key, int numberOfPartitions)
         {
-            throw new NotImplementedException();
+            var fullKey = string.Concat(region, string.IsNullOrWhiteSpace(region) ? null : "_", key);
+            return new ServicePartitionKey(fullKey.GetHashCode());
         }
     }
 }

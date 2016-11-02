@@ -7,7 +7,7 @@
     <ProjectGuid>{38DB63F6-C43D-4659-8B46-8B4AF60BC0A9}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>MS.SF.RS.Caching.Interfaces</RootNamespace>
+    <RootNamespace>Microsoft.Services.ServiceFabric.ReliableServices.Caching.Interfaces</RootNamespace>
     <AssemblyName>MS.SF.RS.Caching.Interfaces</AssemblyName>
     <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
@@ -73,6 +73,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Entities\CacheItem.cs" />
     <Compile Include="Entities\CacheItemPolicy.cs" />
     <Compile Include="Entities\ExecutionResult.cs" />
     <Compile Include="IDistribuitedCache.cs" />

@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ServiceFabric.Services.Runtime;
 
-namespace MS.SF.RS.Caching
+namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
 {
     internal static class Program
     {
@@ -21,9 +21,9 @@ namespace MS.SF.RS.Caching
                 // an instance of the class is created in this host process.
 
                 ServiceRuntime.RegisterServiceAsync("CachingType",
-                    context => new Caching(context)).GetAwaiter().GetResult();
+                    context => new CachingService(context)).GetAwaiter().GetResult();
 
-                ServiceEventSource.Current.ServiceTypeRegistered(Process.GetCurrentProcess().Id, typeof(Caching).Name);
+                ServiceEventSource.Current.ServiceTypeRegistered(Process.GetCurrentProcess().Id, typeof(CachingService).Name);
 
                 // Prevents this host process from terminating so services keep running.
                 Thread.Sleep(Timeout.Infinite);

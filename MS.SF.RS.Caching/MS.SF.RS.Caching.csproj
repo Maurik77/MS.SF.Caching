@@ -7,7 +7,7 @@
     <ProjectGuid>{21AFA3D9-7EF1-4D1A-8C87-7D1B06EECDD4}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>MS.SF.RS.Caching</RootNamespace>
+    <RootNamespace>Microsoft.Services.ServiceFabric.ReliableServices.Caching</RootNamespace>
     <AssemblyName>MS.SF.RS.Caching</AssemblyName>
     <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
@@ -74,9 +74,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Caching.cs" />
+    <Compile Include="CachingService.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="ServiceEventSource.cs" />
+    <Compile Include="Services\DistribuitedCache.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="PackageRoot\Config\Settings.xml" />

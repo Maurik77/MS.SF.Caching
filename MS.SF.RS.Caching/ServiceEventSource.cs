@@ -7,9 +7,9 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.ServiceFabric.Services.Runtime;
 
-namespace MS.SF.RS.Caching
+namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
 {
-    [EventSource(Name = "MyCompany-MS.SF.Caching-Caching")]
+    [EventSource(Name = "Microsoft.Services.ServiceFabric.ReliableServices.Caching")]
     internal sealed class ServiceEventSource : EventSource
     {
         public static readonly ServiceEventSource Current = new ServiceEventSource();
