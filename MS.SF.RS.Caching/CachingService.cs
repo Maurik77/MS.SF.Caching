@@ -56,7 +56,11 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
         /// <param name="cancellationToken">Canceled when Service Fabric needs to shut down this service replica.</param>
         protected override async Task RunAsync(CancellationToken cancellationToken)
         {
+            Debug.WriteLine($"CachingService::RunAsync(cancellationToken)");
+
             this.rootCancellationToken = cancellationToken;
+            this.rootCancellationToken.Register(async () => await this.CleanUpResources());
+
             this.regionList = await this.StateManager.GetOrAddAsync<IReliableDictionary<string, DateTime>>("RegionList");
 
             using (var trx = this.StateManager.CreateTransaction())
@@ -70,6 +74,32 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
             }
 
             this.ReadSettings();
+        }
+
+        private async Task CleanUpResources()
+        {
+            Debug.WriteLine($"CachingService::CleanUpResources");
+
+            using (var trx = this.StateManager.CreateTransaction())
+            {
+                await this.regionList.ForEach(trx,
+                    (item) =>
+                    {
+                        try
+                        {
+                            CancellationTokenSource cancellationToken;
+                            if (this.garbageCancellationTokenDictionary.TryGetValue(item.Key, out cancellationToken))
+                            {
+                                if (!cancellationToken.IsCancellationRequested)
+                                {
+                                    cancellationToken.Cancel();
+                                }
+                                cancellationToken.Dispose();
+                            }
+                        }
+                        catch { }
+                    });
+            }
         }
 
         private void ReadSettings()
@@ -141,8 +171,8 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
 
                 if (nextItemToRemove.Key != null)
                 {
-                    Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> TryDeleteInternalAsync({nextItemToRemove.Key})");
-                    await TryDeleteInternalAsync(region, nextItemToRemove.Key, true);
+                    var deleteResult = await TryDeleteInternalAsync(region, nextItemToRemove.Key, true);
+                    Debug.WriteLine($"CachingService::GarbageExpiredItemsAsync({region})--> TryDeleteInternalAsync({nextItemToRemove.Key}): result={deleteResult}");
                 }
             }
         }
@@ -204,7 +234,8 @@ namespace Microsoft.Services.ServiceFabric.ReliableServices.Caching
 
         private void SendMetrics()
         {
-            //TODO 
+            //TODO Load Metrics
+            //this.Partition.ReportLoad(new List<LoadMetric> { new LoadMetric("Memory", 1234), new LoadMetric("metric1", 42) });
         }
 
         private async Task<IReliableDictionary<string, TValue>> GetReliableDictionaryAsync<TValue>(string prefix, string region)
